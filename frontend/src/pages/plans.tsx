@@ -47,6 +47,51 @@ export interface Subcategory {
   name: string;
 }
 
+export const normalizePlannedMonth = (value: string) => {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?$/);
+  if (!match) return trimmed;
+  const month = match[2].padStart(2, "0");
+  return `${match[1]}-${month}`;
+};
+
+export const isValidPlannedMonth = (value: string) => /^\d{4}[-/]\d{1,2}(?:[-/]\d{1,2})?$/.test(value.trim());
+
+export const normalizeAmountInput = (value: string) => value.replace(/[,，￥¥\s円]/g, "").trim();
+
+export const isValidAmountInput = (value: string) => {
+  const normalized = normalizeAmountInput(value);
+  if (!normalized) return false;
+  return !Number.isNaN(Number(normalized));
+};
+
+export const buildPlanColumns = (
+  categories: Category[],
+  subcategories: Subcategory[]
+): GridColDef<PlanResponse>[] => [
+  { field: "id", headerName: "計画ID", width: 100 },
+  { field: "planned_month", headerName: "予定月", width: 110 },
+  {
+    field: "category_id",
+    headerName: "大分類",
+    width: 140,
+    valueGetter: (_value, row) => resolveCategoryName(row, categories)
+  },
+  {
+    field: "subcategory_id",
+    headerName: "小分類",
+    width: 140,
+    valueGetter: (_value, row) => resolveSubcategoryName(row, subcategories)
+  },
+  { field: "product_name", headerName: "製品/サービス", width: 180 },
+  { field: "vendor", headerName: "取引先", width: 140 },
+  { field: "contract_type", headerName: "契約区分", width: 120 },
+  { field: "amount", headerName: "想定金額", width: 130, valueFormatter: (value) => formatJPY(value) },
+  { field: "plan_type", headerName: "種別", width: 120 },
+  { field: "status", headerName: "状態", width: 110 },
+  { field: "note", headerName: "備考", width: 220 }
+];
+
 const PlansPage = () => {
   const [rows, setRows] = useState<PlanResponse[]>([]);
   const [filterMonth, setFilterMonth] = useState("");
@@ -158,28 +203,10 @@ const PlansPage = () => {
     });
   }, [rows, filterMonth, filterType, searchTerm]);
 
-  const columns: GridColDef[] = [
-    { field: "planned_month", headerName: "予定月", width: 110 },
-    {
-      field: "category_id",
-      headerName: "大分類",
-      width: 140,
-      valueGetter: (params) => resolveCategoryName(params?.row, categories)
-    },
-    {
-      field: "subcategory_id",
-      headerName: "小分類",
-      width: 140,
-      valueGetter: (params) => resolveSubcategoryName(params?.row, subcategories)
-    },
-    { field: "product_name", headerName: "製品/サービス", width: 180 },
-    { field: "vendor", headerName: "取引先", width: 140 },
-    { field: "contract_type", headerName: "契約区分", width: 120 },
-    { field: "amount", headerName: "想定金額", width: 130, valueFormatter: (value) => formatJPY(value) },
-    { field: "plan_type", headerName: "種別", width: 120 },
-    { field: "status", headerName: "状態", width: 110 },
-    { field: "note", headerName: "備考", width: 220 }
-  ];
+  const columns = useMemo(
+    () => buildPlanColumns(categories, subcategories),
+    [categories, subcategories]
+  );
 
   return (
     <Stack spacing={3}>
@@ -718,8 +745,8 @@ const PlansPage = () => {
                 label="予定月(YYYY-MM)"
                 value={createForm.planned_month}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, planned_month: e.target.value }))}
-                error={!/^\d{4}-\d{2}$/.test(createForm.planned_month)}
-                helperText={!/^\d{4}-\d{2}$/.test(createForm.planned_month) ? "YYYY-MM形式" : ""}
+                error={!isValidPlannedMonth(createForm.planned_month)}
+                helperText={!isValidPlannedMonth(createForm.planned_month) ? "YYYY-MM 形式(YYYY/M, YYYY/MM, YYYY-MM-DDも可)" : ""}
               />
               <TextField
                 label="契約区分"
@@ -741,10 +768,10 @@ const PlansPage = () => {
                 label="想定金額"
                 value={createForm.amount}
                 onChange={(e) => setCreateForm((prev) => ({ ...prev, amount: e.target.value }))}
-                error={Boolean(createForm.amount) && Number.isNaN(Number(createForm.amount))}
+                error={Boolean(createForm.amount) && !isValidAmountInput(createForm.amount)}
                 helperText={
-                  Boolean(createForm.amount) && Number.isNaN(Number(createForm.amount))
-                    ? "数値を入力してください"
+                  Boolean(createForm.amount) && !isValidAmountInput(createForm.amount)
+                    ? "数値を入力してください (カンマ/円/￥可)"
                     : ""
                 }
               />
@@ -761,6 +788,8 @@ const PlansPage = () => {
           <Button
             variant="contained"
             onClick={async () => {
+              const plannedMonth = normalizePlannedMonth(createForm.planned_month);
+              const amount = Number(normalizeAmountInput(createForm.amount));
               await api.post("/api/plans", {
                 fiscal_year: createForm.fiscal_year,
                 department_id: createForm.department_id,
@@ -768,9 +797,9 @@ const PlansPage = () => {
                 subcategory_id: Number(createForm.subcategory_id),
                 product_name: createForm.product_name,
                 vendor: createForm.vendor,
-                planned_month: createForm.planned_month,
+                planned_month: plannedMonth,
                 contract_type: createForm.contract_type,
-                amount: Number(createForm.amount),
+                amount,
                 plan_type: createForm.plan_type,
                 note: createForm.note
               });
@@ -790,16 +819,20 @@ const PlansPage = () => {
               });
               api.get<PlanResponse[]>("/api/plans").then((res) => setRows(res.data));
             }}
-            disabled={
-              !createForm.category_id ||
-              !createForm.subcategory_id ||
-              !createForm.product_name ||
-              !createForm.vendor ||
-              !createForm.planned_month ||
-              !createForm.contract_type ||
-              !createForm.amount ||
-              !createForm.plan_type
-            }
+            disabled={(() => {
+              const amountValue = createForm.amount.trim();
+              return (
+                !createForm.category_id ||
+                !createForm.subcategory_id ||
+                !createForm.product_name.trim() ||
+                !createForm.vendor.trim() ||
+                !isValidPlannedMonth(createForm.planned_month) ||
+                !createForm.contract_type.trim() ||
+                !amountValue ||
+                !isValidAmountInput(createForm.amount) ||
+                !createForm.plan_type.trim()
+              );
+            })()}
           >
             作成
           </Button>

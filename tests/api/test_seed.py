@@ -17,8 +17,8 @@ def test_seed_sample_data_two_years():
         assert session.query(models.SubcategoryModel).count() == 9
         assert session.query(models.BudgetModel).count() == 8
         assert session.query(models.PlanModel).count() == 192
-        assert session.query(models.RequestModel).count() == 12
-        assert session.query(models.ExecutionModel).count() == 6
+        assert session.query(models.RequestModel).count() == 15
+        assert session.query(models.ExecutionModel).count() == 9
 
         plan_statuses = {row[0] for row in session.query(models.PlanModel.status).distinct().all()}
         request_statuses = {row[0] for row in session.query(models.RequestModel.status).distinct().all()}
@@ -57,6 +57,42 @@ def test_seed_sample_data_two_years():
             .filter(models.BudgetTransactionModel.tx_type == BudgetTxType.REVERT_ACTUAL.value)
             .count()
             >= 1
+        )
+
+        commit_request_ids = {
+            row[0]
+            for row in session.query(models.BudgetTransactionModel.request_id)
+            .filter(models.BudgetTransactionModel.tx_type == BudgetTxType.COMMIT.value)
+            .filter(models.BudgetTransactionModel.request_id.isnot(None))
+            .all()
+        }
+        actual_request_ids = {
+            row[0]
+            for row in session.query(models.BudgetTransactionModel.request_id)
+            .filter(models.BudgetTransactionModel.tx_type == BudgetTxType.ACTUALIZE.value)
+            .filter(models.BudgetTransactionModel.request_id.isnot(None))
+            .all()
+        }
+
+        executions = session.query(models.ExecutionModel).all()
+        assert any(
+            exe.actual_amount is None
+            and exe.request_id not in commit_request_ids
+            and exe.request_id not in actual_request_ids
+            for exe in executions
+        )
+        assert any(
+            exe.actual_amount is not None
+            and exe.actual_amount > 0
+            and exe.request_id not in commit_request_ids
+            and exe.request_id in actual_request_ids
+            for exe in executions
+        )
+        assert any(
+            exe.actual_amount is None
+            and exe.request_id in commit_request_ids
+            and exe.request_id not in actual_request_ids
+            for exe in executions
         )
 
         seed_sample_data(session)

@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     database_url: str
     client_log_path: str = "logs/client-error.log"
+    app_log_path: str = "logs/app-debug.log"
+    log_level: str = "DEBUG"
 
     class Config:
         env_prefix = ""

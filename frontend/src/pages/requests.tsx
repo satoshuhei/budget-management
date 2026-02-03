@@ -44,6 +44,88 @@ interface AuditLog {
   created_at: string;
 }
 
+export const buildRequestColumns = (
+  canRequest: boolean,
+  plans: Record<number, PlanResponse>,
+  onSubmit: (id: number) => void
+): GridColDef<RequestResponse>[] => {
+  const getPlan = (planId: number | null | undefined) => {
+    if (!planId) return undefined;
+    return plans[planId];
+  };
+
+  return [
+    { field: "id", headerName: "申請ID", width: 100 },
+    {
+      field: "plan_id",
+      headerName: "計画ID",
+      width: 120,
+      valueGetter: (_value, row) => row?.plan_id ?? "計画外"
+    },
+    {
+      field: "plan_product_name",
+      headerName: "製品/サービス",
+      width: 180,
+      valueGetter: (_value, row) => getPlan(row?.plan_id)?.product_name ?? "-"
+    },
+    {
+      field: "plan_vendor",
+      headerName: "取引先",
+      width: 140,
+      valueGetter: (_value, row) => getPlan(row?.plan_id)?.vendor ?? "-"
+    },
+    {
+      field: "plan_month",
+      headerName: "予定月",
+      width: 110,
+      valueGetter: (_value, row) => getPlan(row?.plan_id)?.planned_month ?? "-"
+    },
+    {
+      field: "plan_contract_type",
+      headerName: "契約区分",
+      width: 120,
+      valueGetter: (_value, row) => getPlan(row?.plan_id)?.contract_type ?? "-"
+    },
+    {
+      field: "plan_amount",
+      headerName: "想定金額",
+      width: 130,
+      valueGetter: (_value, row) => getPlan(row?.plan_id)?.amount ?? null,
+      valueFormatter: (value) => formatJPY(value)
+    },
+    {
+      field: "plan_type",
+      headerName: "種別",
+      width: 120,
+      valueGetter: (_value, row) => getPlan(row?.plan_id)?.plan_type ?? "-"
+    },
+    {
+      field: "plan_note",
+      headerName: "備考",
+      width: 200,
+      valueGetter: (_value, row) => getPlan(row?.plan_id)?.note ?? "-"
+    },
+    { field: "requested_amount", headerName: "申請額", width: 140, valueFormatter: (value) => formatJPY(value) },
+    { field: "status", headerName: "状態", width: 120 },
+    {
+      field: "actions",
+      headerName: "アクション",
+      width: 180,
+      sortable: false,
+      renderCell: (params) => (
+        <Button
+          size="small"
+          variant="contained"
+          disabled={params.row.status !== "DRAFT" || !canRequest}
+          onClick={() => onSubmit(params.row.id)}
+        >
+          提出
+        </Button>
+      )
+    }
+  ];
+};
+
 const RequestsPage = () => {
   const { profile } = useAuth();
   const canRequest = profile?.role === "USER" || profile?.role === "BUDGET_ADMIN";
@@ -64,6 +146,7 @@ const RequestsPage = () => {
   const [selected, setSelected] = useState<RequestResponse | null>(null);
   const [planDetail, setPlanDetail] = useState<PlanResponse | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [plans, setPlans] = useState<Record<number, PlanResponse>>({});
 
   const loadRequests = () => {
     api
@@ -77,6 +160,19 @@ const RequestsPage = () => {
   useEffect(() => {
     loadRequests();
   }, [statusFilter]);
+
+  useEffect(() => {
+    api
+      .get<PlanResponse[]>("/api/plans")
+      .then((res) => {
+        const map: Record<number, PlanResponse> = {};
+        res.data.forEach((plan) => {
+          map[plan.id] = plan;
+        });
+        setPlans(map);
+      })
+      .catch(() => setPlans({}));
+  }, []);
 
   const handleCreate = async () => {
     if (!profile) return;
@@ -117,30 +213,9 @@ const RequestsPage = () => {
     }
   };
 
-  const columns: GridColDef[] = useMemo(
-    () => [
-      { field: "id", headerName: "ID", width: 90 },
-      { field: "plan_id", headerName: "Plan", width: 120 },
-      { field: "requested_amount", headerName: "申請額", width: 140, valueFormatter: (value) => formatJPY(value) },
-      { field: "status", headerName: "状態", width: 120 },
-      {
-        field: "actions",
-        headerName: "アクション",
-        width: 180,
-        sortable: false,
-        renderCell: (params) => (
-          <Button
-            size="small"
-            variant="contained"
-            disabled={params.row.status !== "DRAFT" || !canRequest}
-            onClick={() => handleSubmit(params.row.id)}
-          >
-            提出
-          </Button>
-        )
-      }
-    ],
-    []
+  const columns = useMemo(
+    () => buildRequestColumns(canRequest, plans, handleSubmit),
+    [canRequest, plans]
   );
 
   return (

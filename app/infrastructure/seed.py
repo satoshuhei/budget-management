@@ -184,6 +184,9 @@ def seed_sample_data(session: Session) -> None:
         (8, RequestStatus.APPROVED),
         (9, RequestStatus.APPROVED),
         (10, RequestStatus.APPROVED),
+        (12, RequestStatus.APPROVED),
+        (13, RequestStatus.APPROVED),
+        (14, RequestStatus.APPROVED),
         (None, RequestStatus.SUBMITTED),
     ]
 
@@ -242,6 +245,30 @@ def seed_sample_data(session: Session) -> None:
             actual_amount=None,
         ),
     ]
+
+    no_commit_no_actual_request = request_models[-4]
+    no_commit_actual_request = request_models[-3]
+    commit_no_actual_request = request_models[-2]
+
+    execution_models.extend(
+        [
+            models.ExecutionModel(
+                request_id=no_commit_no_actual_request.id,
+                status=ExecutionStatus.NOT_STARTED.value,
+                actual_amount=None,
+            ),
+            models.ExecutionModel(
+                request_id=no_commit_actual_request.id,
+                status=ExecutionStatus.INVOICED.value,
+                actual_amount=Decimal("700000"),
+            ),
+            models.ExecutionModel(
+                request_id=commit_no_actual_request.id,
+                status=ExecutionStatus.ORDERED.value,
+                actual_amount=None,
+            ),
+        ]
+    )
     session.add_all(execution_models)
 
     tx_models: list[models.BudgetTransactionModel] = []
@@ -252,6 +279,7 @@ def seed_sample_data(session: Session) -> None:
         (request_models[9], plan_models[9]),
         (request_models[10], plan_models[10]),
         (request_models[6], plan_models[6]),
+        (commit_no_actual_request, plan_models[14]),
     ]
     for request, plan in commit_pairs:
         budget_id = budget_id_by_key[(plan.fiscal_year, plan.category_id)]
@@ -269,6 +297,7 @@ def seed_sample_data(session: Session) -> None:
 
     actual_pairs = [
         (request_models[3], execution_models[4], plan_models[3]),
+        (no_commit_actual_request, execution_models[-2], plan_models[13]),
     ]
     for request, execution, plan in actual_pairs:
         budget_id = budget_id_by_key[(plan.fiscal_year, plan.category_id)]

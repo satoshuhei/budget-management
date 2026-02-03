@@ -51,6 +51,74 @@ interface AuditLog {
   created_at: string;
 }
 
+export const buildExecutionColumns = (
+  plans: Record<number, PlanResponse>,
+  requests: Record<number, RequestResponse>
+): GridColDef<ExecutionResponse>[] => {
+  const getPlanForExecution = (row?: ExecutionResponse | null) => {
+    if (!row) return undefined;
+    const request = requests[row.request_id];
+    if (!request?.plan_id) return undefined;
+    return plans[request.plan_id];
+  };
+
+  return [
+    { field: "id", headerName: "執行ID", width: 100 },
+    { field: "request_id", headerName: "申請ID", width: 120 },
+    {
+      field: "plan_id",
+      headerName: "計画ID",
+      width: 120,
+      valueGetter: (_value, row) => requests[row?.request_id ?? -1]?.plan_id ?? "計画外"
+    },
+    {
+      field: "plan_product_name",
+      headerName: "製品/サービス",
+      width: 180,
+      valueGetter: (_value, row) => getPlanForExecution(row)?.product_name ?? "-"
+    },
+    {
+      field: "plan_vendor",
+      headerName: "取引先",
+      width: 140,
+      valueGetter: (_value, row) => getPlanForExecution(row)?.vendor ?? "-"
+    },
+    {
+      field: "plan_month",
+      headerName: "予定月",
+      width: 110,
+      valueGetter: (_value, row) => getPlanForExecution(row)?.planned_month ?? "-"
+    },
+    {
+      field: "plan_contract_type",
+      headerName: "契約区分",
+      width: 120,
+      valueGetter: (_value, row) => getPlanForExecution(row)?.contract_type ?? "-"
+    },
+    {
+      field: "plan_amount",
+      headerName: "想定金額",
+      width: 130,
+      valueGetter: (_value, row) => getPlanForExecution(row)?.amount ?? null,
+      valueFormatter: (value) => formatJPY(value)
+    },
+    {
+      field: "plan_type",
+      headerName: "種別",
+      width: 120,
+      valueGetter: (_value, row) => getPlanForExecution(row)?.plan_type ?? "-"
+    },
+    {
+      field: "plan_note",
+      headerName: "備考",
+      width: 200,
+      valueGetter: (_value, row) => getPlanForExecution(row)?.note ?? "-"
+    },
+    { field: "status", headerName: "状態", width: 130 },
+    { field: "actual_amount", headerName: "実績", width: 120, valueFormatter: (value) => formatJPY(value) }
+  ];
+};
+
 const ExecutionsPage = () => {
   const { profile } = useAuth();
   const [rows, setRows] = useState<ExecutionResponse[]>([]);
@@ -64,6 +132,8 @@ const ExecutionsPage = () => {
   const [requestDetail, setRequestDetail] = useState<RequestResponse | null>(null);
   const [planDetail, setPlanDetail] = useState<PlanResponse | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [requests, setRequests] = useState<Record<number, RequestResponse>>({});
+  const [plans, setPlans] = useState<Record<number, PlanResponse>>({});
   const canOperate = profile?.role === "USER" || profile?.role === "BUDGET_ADMIN";
 
   const statusColor = (status: string) => {
@@ -86,6 +156,30 @@ const ExecutionsPage = () => {
   useEffect(() => {
     loadExecutions();
   }, [statusFilter]);
+
+  useEffect(() => {
+    api
+      .get<RequestResponse[]>("/api/requests")
+      .then((res) => {
+        const map: Record<number, RequestResponse> = {};
+        res.data.forEach((req) => {
+          map[req.id] = req;
+        });
+        setRequests(map);
+      })
+      .catch(() => setRequests({}));
+
+    api
+      .get<PlanResponse[]>("/api/plans")
+      .then((res) => {
+        const map: Record<number, PlanResponse> = {};
+        res.data.forEach((plan) => {
+          map[plan.id] = plan;
+        });
+        setPlans(map);
+      })
+      .catch(() => setPlans({}));
+  }, []);
 
   const handleCreate = async () => {
     setMessage(null);
@@ -114,14 +208,9 @@ const ExecutionsPage = () => {
     loadExecutions();
   };
 
-  const columns: GridColDef[] = useMemo(
-    () => [
-      { field: "id", headerName: "ID", width: 90 },
-      { field: "request_id", headerName: "Request", width: 120 },
-      { field: "status", headerName: "状態", width: 130 },
-      { field: "actual_amount", headerName: "実績", width: 120, valueFormatter: (value) => formatJPY(value) }
-    ],
-    []
+  const columns = useMemo(
+    () => buildExecutionColumns(plans, requests),
+    [plans, requests]
   );
 
   return (
