@@ -1,0 +1,43 @@
+@startuml
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Segoe UI"
+
+package "Backend (FastAPI)" {
+  [presentation/api.py] as API
+  [application/usecases.py] as UC
+  [domain/entities.py] as ENT
+  [domain/enums.py] as ENM
+  [infrastructure/repositories.py] as REPO
+  [infrastructure/seed.py] as SEED
+  [infrastructure/models.py] as MODEL
+  [infrastructure/db.py] as DB
+}
+
+package "Frontend (React)" {
+  [pages/*] as PAGES
+  [services/api.ts] as FEAPI
+  [utils/*] as UTILS
+}
+
+DB --> MODEL
+MODEL --> REPO
+REPO --> UC
+UC --> API
+
+FEAPI --> API
+PAGES --> FEAPI
+PAGES --> UTILS
+
+SEED --> MODEL
+SEED --> ENM
+ENT --> ENM
+
+note right of SEED
+Seed coverage:
+- Plan/Request/Execution
+  statuses all included
+- BudgetTxType all included
+- actual_amount: None / >0
+end note
+
+@enduml
